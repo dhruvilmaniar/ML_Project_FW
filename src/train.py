@@ -1,5 +1,7 @@
 import pandas as pd
 from sklearn import preprocessing
+from sklearn import ensemble
+from sklearn import metrics
 import os
 
 TRAINING_DATA = os.environ.get("TRAINING_DATA")
@@ -18,6 +20,27 @@ FOLD_MAPPING = {
 if __name__ == '__main__':
 
     df = pd.read_csv(TRAINING_DATA)
-    df_test = pd.read_csv(TEST_DATA)
+    train_df = df[df.kfold.isin(FOLD_MAPPING.get(FOLD))]
+    valid_df = df[df.kfold==FOLD]
 
-    print(df.head())
+    ytrain = train_df.target.values
+    yvalid = valid_df.target.values
+
+    train_df = train_df.drop(["id","target","kfold"], axis=1)
+    valid_df = valid_df.drop(["id","target","kfold"], axis = 1)
+
+    valid_df = valid_df[train_df.columns]
+    label_encoder = []
+
+    for c in train_df.columns:
+        lbl = preprocessing.LabelEncoder()
+        lbl.fit(train_df[c].values.tolist() + valid_df[c].values.tolist())
+        train_df.loc[:,c] = lbl.transform(train_df[c].values.tolist())
+        valid_df.loc[:,c] = lbl.transform(valid_df[c].values.tolist())
+        label_encoder.append((c,lbl))
+
+    clf = ensemble.RandomForestClassifier(n_jobs=-1, verbose = 2)
+    clf.fit(train_df, ytrain)
+
+    preds = clf.predict_proba(valid_df)[:,1]
+    print(metrics.roc_auc_score(yvalid, preds))
